@@ -1,0 +1,9 @@
+-- Create agent_configs table
+CREATE TABLE IF NOT EXISTS agent_configs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    agent_id VARCHAR(255) NOT NULL UNIQUE,
+    machine_info JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+); 

@@ -1,0 +1,3 @@
+@echo off
+echo Starting ActivTrack Windows Agent...
+python windows_agent.py 

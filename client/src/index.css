@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: 145 80% 35%;
+    --primary-foreground: 0 0% 98%;
+    
+    --accent-blue: 210 100% 50%;
+    --accent-red: 0 90% 60%;
+    
+    --gradient-start: 145 80% 35%;
+    --gradient-end: 210 100% 50%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+  
+  h1, h2, h3, h4 {
+    @apply font-bold tracking-tight;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-5xl;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent-blue)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .card {
+    @apply rounded-xl border shadow-sm hover:shadow-md transition-shadow;
+  }
+  
+  .premium-card {
+    @apply rounded-xl border-2 border-primary/50 shadow-lg;
+    background: linear-gradient(135deg, hsl(var(--primary)/10%), hsl(var(--accent-blue)/5%));
+  }
+  
+  .premium-button {
+    @apply relative overflow-hidden rounded-md font-semibold text-white transition-all shadow-lg;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent-blue)));
+  }
+  
+  .premium-button:hover {
+    @apply shadow-xl;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent-blue)/90%));
+  }
+  
+  .accent-blue {
+    color: hsl(var(--accent-blue));
+  }
+  
+  .accent-red {
+    color: hsl(var(--accent-red));
+  }
+  
+  .bg-gradient {
+    background: linear-gradient(135deg, hsl(var(--gradient-start)/95%), hsl(var(--gradient-end)/95%));
+  }
+}
