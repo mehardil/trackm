@@ -41,6 +41,16 @@ export const activities = pgTable('activities', {
     is_active: boolean('is_active').default(true)
 });
 
+// App rules table
+export const appRules = pgTable('app_rules', {
+    id: serial('id').primaryKey(),
+    application: text('application').notNull().unique(),
+    category: text('category').notNull(),
+    is_blocked: boolean('is_blocked').default(false),
+    created_at: timestamp('created_at').defaultNow(),
+    updated_at: timestamp('updated_at').defaultNow()
+});
+
 export interface User {
   id: number;
   username: string;

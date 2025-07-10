@@ -36,7 +36,7 @@ export interface IStorage {
   // Activity tracking
   createActivity(activity: InsertActivity): Promise<Activity>;
   getActivitiesByUserId(userId: number, startDate?: Date, endDate?: Date): Promise<Activity[]>;
-  getRecentActivities(limit?: number, organizationId?: number): Promise<Activity[]>;
+  getRecentActivities(limit?: number, organizationId?: number, startDate?: Date): Promise<Activity[]>;
 
   // Application and website tracking
   getApplications(): Promise<Application[]>;
@@ -78,6 +78,7 @@ export interface IStorage {
   // Dashboard metrics
   getTeamOverview(organizationId?: number): Promise<any>;
   getDashboardMetrics(organizationId?: number): Promise<any>;
+  getTopApplications(limit?: number, startDate?: Date): Promise<any[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -623,7 +624,7 @@ export class MemStorage implements IStorage {
       new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
   }
 
-  async getRecentActivities(limit = 10, organizationId?: number): Promise<Activity[]> {
+  async getRecentActivities(limit = 10, organizationId?: number, startDate?: Date): Promise<Activity[]> {
     let activities = Array.from(this.activities.values());
     
     // If an organizationId is provided, filter activities by users in that organization
@@ -635,6 +636,11 @@ export class MemStorage implements IStorage {
       
       // Then filter activities by these users
       activities = activities.filter(activity => usersInOrg.includes(activity.userId));
+    }
+    
+    // If a startDate is provided, filter activities by start time
+    if (startDate) {
+      activities = activities.filter(activity => activity.startTime >= startDate);
     }
     
     return activities
@@ -935,6 +941,33 @@ export class MemStorage implements IStorage {
       totalMembers: users.length
     };
   }
+
+  async getTopApplications(limit = 5, startDate?: Date): Promise<any[]> {
+    const appUsage = new Map<string, { usage_time: number; sessions: number; category: string }>();
+    
+    Array.from(this.activities.values())
+      .filter(activity => !startDate || activity.startTime >= startDate)
+      .forEach(activity => {
+        const app = activity.application || 'Unknown';
+        const current = appUsage.get(app) || { usage_time: 0, sessions: 0, category: activity.category || 'neutral' };
+        
+        appUsage.set(app, {
+          usage_time: current.usage_time + (activity.duration || 0),
+          sessions: current.sessions + 1,
+          category: current.category
+        });
+      });
+    
+    return Array.from(appUsage.entries())
+      .map(([name, data]) => ({
+        name,
+        usage_time: data.usage_time,
+        category: data.category,
+        sessions: data.sessions
+      }))
+      .sort((a, b) => b.usage_time - a.usage_time)
+      .slice(0, limit);
+  }
 }
 
 import { db } from "./db";
@@ -1039,22 +1072,26 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(activities.startTime));
   }
 
-  async getRecentActivities(limit = 10, organizationId?: number): Promise<Activity[]> {
+  async getRecentActivities(limit = 10, organizationId?: number, startDate?: Date): Promise<Activity[]> {
+    let query = db.select().from(activities);
+    
+    const conditions = [];
+    
     if (organizationId) {
       const orgUsers = await this.getAllUsers(organizationId);
       const userIds = orgUsers.map(user => user.id);
-      return db
-        .select()
-        .from(activities)
-        .where(activities.userId.in(userIds))
-        .orderBy(desc(activities.startTime))
-        .limit(limit);
+      conditions.push(activities.userId.in(userIds));
     }
-    return db
-      .select()
-      .from(activities)
-      .orderBy(desc(activities.startTime))
-      .limit(limit);
+    
+    if (startDate) {
+      conditions.push(gte(activities.startTime, startDate));
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    return query.orderBy(desc(activities.startTime)).limit(limit);
   }
 
   // Application and website tracking
@@ -1351,6 +1388,18 @@ export class DatabaseStorage implements IStorage {
         { hour: "5 PM", activeTime: 2400, productiveTime: 1200 },
       ],
     };
+  }
+
+  async getTopApplications(limit = 5, startDate?: Date): Promise<any[]> {
+    // This is a complex query that would need more implementation
+    // For now, return placeholder data
+    return [
+      { name: "Visual Studio Code", usage_time: 45900, category: "productive", sessions: 45 },
+      { name: "Chrome", usage_time: 30600, category: "neutral", sessions: 67 },
+      { name: "Slack", usage_time: 18720, category: "productive", sessions: 23 },
+      { name: "Outlook", usage_time: 14400, category: "productive", sessions: 12 },
+      { name: "Teams", usage_time: 10800, category: "productive", sessions: 8 }
+    ];
   }
 }
 

@@ -7,18 +7,14 @@ dotenv.config();
 
 const { Pool } = pg;
 
-// Get database URL from environment variables
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-    throw new Error('DATABASE_URL environment variable is not set');
-}
-
-console.log('Connecting to database with URL:', databaseUrl);
-
+// Database connection parameters
 const pool = new Pool({
-    connectionString: databaseUrl,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    user: 'postgres',
+    password: 'adm1n#Mobi',
+    host: 'localhost',
+    port: 5433,
+    database: 'trackm',
+    ssl: false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,

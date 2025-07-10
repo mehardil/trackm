@@ -11,15 +11,29 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8000,
+    host: '127.0.0.1',
+    port: 3000,
+    open: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        secure: false,
+        ws: false
       },
       '/ws': {
         target: 'ws://localhost:8080',
         ws: true,
+        changeOrigin: true
+      }
+    },
+  },
+  build: {
+    sourcemap: true,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false,
       },
     },
   },

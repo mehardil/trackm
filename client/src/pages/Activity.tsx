@@ -3,23 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, UseQueryOptions } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Activity as ActivityIcon, Clock, Users, TrendingUp, Laptop, Calendar, Filter, Download, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 
 interface Activity {
-  id: string;
+  id: number;
+  user_id: number;
+  team_id: number | null;
+  start_time: string;
+  end_time: string;
+  duration: number;
   application: string;
   title: string;
-  start_time: string;
-  duration: number;
   category: string;
-  metrics?: {
-    cpu: number;
-    memory: number;
-  };
-  user_id: string;
-  team_id: string;
+  is_active: boolean;
 }
 
 interface User {
@@ -103,7 +101,7 @@ export default function Activity() {
   }, []);
 
   // Fetch initial data
-  const { data: initialData, isLoading: isLoadingInitial } = useQuery({
+  const { data: initialData, isLoading: isLoadingInitial } = useQuery<Activity[]>({
     queryKey: ['activities', selectedTeam, selectedUser, timeRange, productivityFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -112,15 +110,36 @@ export default function Activity() {
       if (timeRange) params.append('time_range', timeRange);
       if (productivityFilter && productivityFilter !== 'all') params.append('productivity', productivityFilter);
 
-      const response = await fetch(`http://localhost:8000/api/activity?${params.toString()}`);
-      if (!response.ok) throw new Error('Failed to fetch activities');
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`http://127.0.0.1:8000/api/activity?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Unauthorized - Please login again');
+        }
+        throw new Error('Failed to fetch activities');
+      }
+      
       const data = await response.json();
       return data.activities || [];
-    },
-    onSuccess: (data) => {
-      setActivities(data);
     }
-  });
+  } as UseQueryOptions<Activity[], Error>);
+
+  // Update activities state when data changes
+  useEffect(() => {
+    if (initialData) {
+      setActivities(initialData);
+    }
+  }, [initialData]);
 
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -348,7 +367,9 @@ export default function Activity() {
                         {getProductivityIcon(activity.category)}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm">{format(new Date(activity.start_time), 'h:mm a')}</p>
+                        <p className="text-sm">
+                          {activity.start_time ? new Date(activity.start_time).toLocaleTimeString() : 'N/A'}
+                        </p>
                         <p className="text-xs text-neutral-medium">
                           {activity.duration > 0 ? `${Math.round(activity.duration / 60)} minutes` : 'Active'}
                         </p>
@@ -372,30 +393,13 @@ export default function Activity() {
               ) : (
                 <div className="space-y-4">
                   {activities.map((activity) => (
-                    <div key={activity.id} className="flex items-center gap-4 p-4 border rounded-lg">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <span className="text-blue-600 font-medium">
-                          {activity.application.charAt(0).toUpperCase()}
-                        </span>
+                    <div key={activity.id} className="activity-item">
+                      <div className="activity-time">
+                        {new Date(activity.start_time).toLocaleString()}
                       </div>
-                      <div className="flex-1">
-                        <p className="font-medium">{activity.application}</p>
-                        <p className="text-sm text-neutral-medium">{activity.title}</p>
-                        <p className="text-xs text-neutral-medium">
-                          {getUserName(activity.user_id)} • {getTeamName(activity.team_id)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-1 rounded-full ${getProductivityColor(activity.category)}`}>
-                          {activity.category}
-                        </span>
-                        {getProductivityIcon(activity.category)}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm">{format(new Date(activity.start_time), 'h:mm a')}</p>
-                        <p className="text-xs text-neutral-medium">
-                          {activity.duration > 0 ? `${Math.round(activity.duration / 60)} minutes` : 'Active'}
-                        </p>
+                      <div className="activity-details">
+                        <div className="activity-application">{activity.application}</div>
+                        <div className="activity-title">{activity.title}</div>
                       </div>
                     </div>
                   ))}

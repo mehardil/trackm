@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -24,48 +24,31 @@ export default function ActivityTimelineChart() {
   const [timeRange, setTimeRange] = useState<"day" | "week" | "month">("week");
   
   // Fetch data based on time range
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["/api/activities/timeline", timeRange],
-    queryFn: () => {
-      // This would be a real API call in a production environment
-      // For now, we generate mock data that matches the selected time range
-      let mockData: TimelineData[] = [];
-      
-      if (timeRange === "day") {
-        // Hourly data for a day
-        for (let i = 0; i < 24; i += 2) {
-          const hour = i < 10 ? `0${i}:00` : `${i}:00`;
-          mockData.push({
-            time: hour,
-            productive: Math.floor(Math.random() * 55) + 15, // 15-70
-            neutral: Math.floor(Math.random() * 25) + 5,    // 5-30
-            unproductive: Math.floor(Math.random() * 15),   // 0-15
-          });
+    queryFn: async () => {
+      try {
+        console.log('Fetching timeline data for range:', timeRange);
+        const response = await fetch(`http://localhost:8000/api/activities/timeline?timeRange=${timeRange}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch timeline data');
         }
-      } else if (timeRange === "week") {
-        // Daily data for a week
-        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        mockData = days.map(day => ({
-          time: day,
-          productive: Math.floor(Math.random() * 55) + 15,
-          neutral: Math.floor(Math.random() * 25) + 5,
-          unproductive: Math.floor(Math.random() * 15),
-        }));
-      } else if (timeRange === "month") {
-        // Weekly data for a month
-        for (let i = 1; i <= 4; i++) {
-          mockData.push({
-            time: `Week ${i}`,
-            productive: Math.floor(Math.random() * 55) + 15,
-            neutral: Math.floor(Math.random() * 25) + 5,
-            unproductive: Math.floor(Math.random() * 15),
-          });
-        }
+        const data = await response.json();
+        console.log('Fetched timeline data:', data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching timeline data:', error);
+        throw error;
       }
-      
-      return mockData;
-    },
+    }
   });
+
+  // Debug effect to log data changes
+  useEffect(() => {
+    console.log('Timeline data updated:', data);
+    console.log('Loading state:', isLoading);
+    console.log('Error state:', error);
+  }, [data, isLoading, error]);
 
   return (
     <Card className="shadow-sm">
@@ -104,6 +87,10 @@ export default function ActivityTimelineChart() {
           {isLoading ? (
             <div className="flex h-full items-center justify-center">
               <p>Loading activity data...</p>
+            </div>
+          ) : error ? (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-red-500">Error loading data</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">

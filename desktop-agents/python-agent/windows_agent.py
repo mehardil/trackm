@@ -116,6 +116,13 @@ class WindowsAgent:
             with open(self.agent_id_file, 'w') as f:
                 f.write(self.agent_id)
 
+        self.last_window = None
+        self.last_window_start = None
+        self.idle_threshold = 300  # 5 minutes in seconds
+        self.was_idle = False
+        self.idle_start_time = None
+        self.team_id = 12
+
     def on_ws_message(self, ws, message):
         try:
             data = json.loads(message)
@@ -255,11 +262,23 @@ class WindowsAgent:
                 'path': 'Unknown'
             }
     
-    def track_activity(self):
+    def get_idle_duration(self):
+        """Returns the number of seconds since the last user input (mouse/keyboard)."""
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [('cbSize', ctypes.c_uint), ('dwTime', ctypes.c_uint)]
+        lii = LASTINPUTINFO()
+        lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+        if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+            millis = win32api.GetTickCount() - lii.dwTime
+            return millis / 1000.0
+        return 0
+
+    def track_activity(self, window_info=None, duration=None, idle_time=0):
         try:
-            # Get active window info
-            window_info = self.get_active_window()
-            
+            if window_info is None:
+                window_info = self.get_active_window()
+            if duration is None:
+                duration = 0
             # Create activity data
             activity_data = {
                 "userId": self.user_id,
@@ -267,14 +286,14 @@ class WindowsAgent:
                 "timestamp": datetime.now().isoformat(),
                 "application": window_info['application'],
                 "title": window_info['title'],
-                "isActive": True,
-                "idleTime": 0,
+                "isActive": idle_time < self.idle_threshold,
+                "idleTime": int(idle_time),
+                "duration": duration,
                 "metrics": {
                     "cpu": psutil.cpu_percent(),
                     "memory": psutil.virtual_memory().percent
                 }
             }
-            
             # Send activity data with token
             headers = {'Authorization': f'Bearer {self.token}'} if self.token else {}
             response = self.session.post(
@@ -282,7 +301,6 @@ class WindowsAgent:
                 json=activity_data,
                 headers=headers
             )
-            
             if response.status_code == 200:
                 print(f"Activity sent successfully: {activity_data}")
                 # Also send via WebSocket if connected
@@ -294,7 +312,6 @@ class WindowsAgent:
             else:
                 print(f"Error sending activity: {response.status_code}")
                 print(f"Error message: {response.text}")
-                
         except Exception as e:
             print(f"Error tracking activity: {e}")
 
@@ -303,7 +320,6 @@ class WindowsAgent:
         print(f"API URL: {self.api_url}")
         print(f"WebSocket URL: {self.ws_url}")
         print(f"Organization: {TEST_ORG_NAME} (ID: {TEST_ORG_ID})")
-        
         # Load saved config if exists
         config_file = os.path.join(self.data_dir, 'config.json')
         if os.path.exists(config_file):
@@ -316,21 +332,50 @@ class WindowsAgent:
                     print(f"Loaded saved configuration - User ID: {self.user_id}, Team ID: {self.team_id}")
             except Exception as e:
                 print(f"Error loading config: {e}")
-        
         # Register agent if not already registered
         if not self.user_id or not self.team_id:
             if not self.register_agent():
                 print("Failed to register agent. Exiting...")
                 return
-        
         # Connect to WebSocket
         self.connect_websocket()
-        
+        # Initialize last window and start time
+        self.last_window = self.get_active_window()
+        self.last_window_start = datetime.now()
+        self.last_activity_sent = self.last_window_start
+        self.cpu_usages = []
+        self.mem_usages = []
+        report_interval = 300  # 5 minutes in seconds
         # Main activity tracking loop
         while True:
             try:
-                self.track_activity()
-                time.sleep(5)  # Track activity every 5 seconds
+                current_window = self.get_active_window()
+                now = datetime.now()
+                self.cpu_usages.append(psutil.cpu_percent())
+                self.mem_usages.append(psutil.virtual_memory().percent)
+                window_changed = (
+                    current_window['title'] != self.last_window['title'] or
+                    current_window['application'] != self.last_window['application']
+                )
+                time_since_last_sent = (now - self.last_activity_sent).total_seconds()
+                idle_time = self.get_idle_duration()
+                if window_changed or time_since_last_sent >= report_interval or idle_time >= self.idle_threshold:
+                    duration = (now - self.last_window_start).total_seconds()
+                    min_cpu = min(self.cpu_usages) if self.cpu_usages else 0
+                    max_cpu = max(self.cpu_usages) if self.cpu_usages else 0
+                    min_mem = min(self.mem_usages) if self.mem_usages else 0
+                    max_mem = max(self.mem_usages) if self.mem_usages else 0
+                    self.track_activity(
+                        self.last_window,
+                        duration=duration,
+                        idle_time=idle_time
+                    )
+                    self.last_window = current_window
+                    self.last_window_start = now
+                    self.last_activity_sent = now
+                    self.cpu_usages = []
+                    self.mem_usages = []
+                time.sleep(5)
             except KeyboardInterrupt:
                 print("Stopping agent...")
                 if self.ws:
@@ -338,7 +383,7 @@ class WindowsAgent:
                 break
             except Exception as e:
                 print(f"Error in main loop: {e}")
-                time.sleep(5)  # Wait before retrying
+                time.sleep(5)
 
 if __name__ == "__main__":
     run_as_admin()

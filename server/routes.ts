@@ -4,6 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertUserSchema, insertActivitySchema, insertApplicationSchema, insertWebsiteSchema, insertDailySummarySchema, insertProjectSchema } from "@shared/schema";
 import { z } from "zod";
+import agentsRouter from './routes/agents';
+import appRulesRouter from './routes/app-rules';
+import dashboardRouter from './routes/dashboard';
 
 // Map to store active WebSocket connections by user ID and organization ID
 type WebSocketConnections = {
@@ -57,6 +60,12 @@ export function sendToUser(userId: number, event: string, data: any): void {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const router = express.Router();
+
+  // Register the agents router
+  router.use('/agents', agentsRouter);
+
+  // Register the dashboard router
+  router.use('/dashboard', dashboardRouter);
 
   // User routes
   router.get("/users", async (req: Request, res: Response) => {
@@ -191,6 +200,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors });
       }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Recent activities endpoint
+  router.get("/activities/recent", async (req: Request, res: Response) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const timeRange = req.query.time_range as string || 'today';
+      
+      // Calculate date range
+      let startDate = new Date();
+      switch (timeRange) {
+        case 'today':
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case 'yesterday':
+          startDate.setDate(startDate.getDate() - 1);
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case 'week':
+          startDate.setDate(startDate.getDate() - 7);
+          break;
+        case 'month':
+          startDate.setMonth(startDate.getMonth() - 1);
+          break;
+        default:
+          startDate.setDate(startDate.getDate() - 1); // Default to last 24 hours
+      }
+      
+      const activities = await storage.getRecentActivities(limit, undefined, startDate);
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Top applications endpoint
+  router.get("/applications/top", async (req: Request, res: Response) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      const timeRange = req.query.time_range as string || 'today';
+      
+      // Calculate date range
+      let startDate = new Date();
+      switch (timeRange) {
+        case 'today':
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case 'yesterday':
+          startDate.setDate(startDate.getDate() - 1);
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case 'week':
+          startDate.setDate(startDate.getDate() - 7);
+          break;
+        case 'month':
+          startDate.setMonth(startDate.getMonth() - 1);
+          break;
+        default:
+          startDate.setDate(startDate.getDate() - 1); // Default to last 24 hours
+      }
+      
+      const topApps = await storage.getTopApplications(limit, startDate);
+      res.json(topApps);
+    } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1345,6 +1420,9 @@ In a production environment, this would contain the actual agent software.`;
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // App rules routes
+  router.use('/api/app-rules', appRulesRouter);
 
   // Use the router with a base URL prefix
   app.use("/api", router);

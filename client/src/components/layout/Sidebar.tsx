@@ -1,6 +1,6 @@
 import { Link, useRoute } from "wouter";
 import { 
-  LayoutDashboard, Users, ChartBarStacked, Laptop, Globe, 
+  LayoutDashboard, Users, BarChart, Laptop, Globe, 
   GitBranch, Clock, Watch, Settings, Shield, Download, 
   MonitorDown
 } from "lucide-react";
@@ -35,7 +35,7 @@ export default function Sidebar() {
         </div>
         <NavItem href="/" icon={<LayoutDashboard size={16} />} label="Dashboard" />
         <NavItem href="/team-overview" icon={<Users size={16} />} label="Team Overview" />
-        <NavItem href="/activity" icon={<ChartBarStacked size={16} />} label="Activity" />
+        <NavItem href="/activity" icon={<BarChart size={16} />} label="Activity" />
         <NavItem href="/applications" icon={<Laptop size={16} />} label="Applications" />
         <NavItem href="/websites" icon={<Globe size={16} />} label="Websites" />
         

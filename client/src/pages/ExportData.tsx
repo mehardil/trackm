@@ -19,7 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format } from "date-fns";
-import { Download, FileText, FileSpreadsheet, FileJson, Calendar as CalendarIcon, Filter, ChartBar, Check } from "lucide-react";
+import { Download, FileText, FileSpreadsheet, FileJson, Calendar as CalendarIcon, Filter, BarChart, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useActivity } from "@/hooks/useActivity";
@@ -539,7 +539,7 @@ export default function ExportData() {
                   <div className="border rounded-md p-4 hover:border-primary cursor-pointer">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center">
-                        <ChartBar className="h-5 w-5 text-primary mr-2" />
+                        <BarChart className="h-5 w-5 text-primary mr-2" />
                         <span className="font-medium">PDF Report</span>
                       </div>
                       <Checkbox checked={exportFormat === "pdf"} onCheckedChange={() => setExportFormat("pdf")} />

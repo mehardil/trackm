@@ -4,6 +4,10 @@
 
 @layer base {
   :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --border: 0 0% 89.8%;
+    
     --primary: 145 80% 35%;
     --primary-foreground: 0 0% 98%;
     
@@ -15,7 +19,7 @@
   }
 
   * {
-    @apply border-border;
+    @apply border-border/20;
   }
 
   body {
@@ -49,18 +53,17 @@
   
   .premium-button:hover {
     @apply shadow-xl;
-    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent-blue)/90%));
   }
   
   .accent-blue {
-    color: hsl(var(--accent-blue));
+    @apply text-accent-blue;
   }
   
   .accent-red {
-    color: hsl(var(--accent-red));
+    @apply text-accent-red;
   }
   
   .bg-gradient {
-    background: linear-gradient(135deg, hsl(var(--gradient-start)/95%), hsl(var(--gradient-end)/95%));
+    background: linear-gradient(135deg, hsl(var(--gradient-start)), hsl(var(--gradient-end)));
   }
 }

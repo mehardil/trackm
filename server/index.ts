@@ -1,6 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { log } from "./vite";
 import { createServer } from "http";
 import path from 'path';
 import fs from 'fs';
@@ -12,15 +12,17 @@ import activityRoutes from './routes/activity';
 import authRoutes from './routes/auth';
 import agentRoutes from './routes/agents';
 import { wsManager } from './websocket';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? process.env.FRONTEND_URL 
-        : 'http://localhost:3000',
+    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
     credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -38,7 +40,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // Set to false for HTTP
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     },
   })
@@ -104,24 +106,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 (async () => {
-  const server = await registerRoutes(app);
-
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
-
   try {
+    const server = await registerRoutes(app);
     const port = 8000;
     process.env.PORT = port.toString();
     
     server.listen({
       port,
-      host: "0.0.0.0",
+      host: "127.0.0.1",
     }, () => {
-      log(`Server running on port ${port}`);
-      log(`WebSocket server is running on port 8080`);
+      log(`Server running on http://127.0.0.1:${port}`);
+      log(`WebSocket server is running on ws://127.0.0.1:8080`);
     });
 
     // Handle server errors

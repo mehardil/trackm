@@ -33,65 +33,96 @@ interface WebSocketClient {
 
 export class WebSocketManager {
     private wss: WebSocketServer;
-    private clients: Set<WebSocket>;
+    private connections: Map<string, WebSocket>;
 
-    constructor() {
-        this.clients = new Set();
-        this.wss = new WebSocketServer({ port: 8080 });
+    constructor(port: number = 8080) {
+        this.connections = new Map();
+        this.wss = new WebSocketServer({ 
+            port,
+            host: "127.0.0.1",
+            clientTracking: true
+        });
 
-        this.wss.on('connection', (ws) => {
-            this.clients.add(ws);
-            log('New WebSocket client connected');
+        this.setupEventHandlers();
+    }
 
-            ws.on('message', (message) => {
+    private setupEventHandlers() {
+        this.wss.on('connection', (ws: WebSocket) => {
+            const connectionId = Math.random().toString(36).substring(7);
+            this.connections.set(connectionId, ws);
+            log(`New WebSocket connection established: ${connectionId}`);
+
+            // Send a welcome message
+            ws.send(JSON.stringify({ type: 'connected', message: 'Welcome to TrackM WebSocket server' }));
+
+            // Handle incoming messages
+            ws.on('message', (message: string) => {
                 try {
-                    const data = JSON.parse(message.toString());
-                    log(`Received WebSocket message: ${JSON.stringify(data)}`);
-                    
-                    // Handle subscription messages
-                    if (data.type === 'subscribe') {
-                        // Store subscription preferences if needed
-                        log(`Client subscribed to: ${JSON.stringify(data.data)}`);
-                    }
+                    const data = JSON.parse(message);
+                    log(`Received WebSocket message from ${connectionId}:`, data);
                 } catch (error) {
                     log(`Error parsing WebSocket message: ${error}`);
                 }
             });
 
+            // Handle connection close
             ws.on('close', () => {
-                this.clients.delete(ws);
-                log('WebSocket client disconnected');
+                this.connections.delete(connectionId);
+                log(`WebSocket connection closed: ${connectionId}`);
             });
 
+            // Handle errors
             ws.on('error', (error) => {
-                log(`WebSocket error: ${error}`);
-                this.clients.delete(ws);
+                log(`WebSocket error for ${connectionId}: ${error.message || 'Unknown error'}`);
+                this.connections.delete(connectionId);
+            });
+
+            // Send periodic ping to keep connection alive
+            const pingInterval = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.ping();
+                } else {
+                    clearInterval(pingInterval);
+                }
+            }, 30000);
+
+            // Clean up on close
+            ws.on('close', () => {
+                clearInterval(pingInterval);
             });
         });
 
-        log('WebSocket server started on port 8080');
+        this.wss.on('error', (error) => {
+            log(`WebSocket server error: ${error.message || 'Unknown error'}`);
+        });
     }
 
-    broadcastActivity(activity: Activity) {
-        const message = JSON.stringify({
-            type: 'activity',
-            data: activity
-        });
-
-        this.clients.forEach((client) => {
+    broadcast(message: string) {
+        this.wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(message);
             }
         });
     }
 
-    public broadcastToTeam(teamId: number, activity: any) {
+    broadcastActivity(activity: any): void {
         const message = JSON.stringify({
             type: 'activity',
             data: activity
         });
+        this.broadcast(message);
+    }
 
-        this.clients.forEach(client => {
+    broadcastAgentStatus(agent: any): void {
+        const message = JSON.stringify({
+            type: 'agent_status',
+            data: agent
+        });
+        this.broadcast(message);
+    }
+
+    public broadcastToTeam(teamId: string, message: string) {
+        this.wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(message);
             }
