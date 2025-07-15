@@ -176,7 +176,7 @@ def get_activities_of_team(team_id: int):
         SELECT a.*, u.username 
         FROM activities a 
         INNER JOIN users u ON a.user_id = u.id 
-        WHERE a.team_id = %s;
+        WHERE a.team_id = %s limit 600;
     """
     print(query)
     print(team_id)
