@@ -24,9 +24,11 @@ import websocket
 import threading
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import re
 
 # Setup logging
-log_dir = os.path.join(os.getenv('APPDATA'), 'ActivTrack')
+appdata = os.getenv('APPDATA') or os.path.expanduser('~')
+log_dir = os.path.join(appdata, 'ActivTrack')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'agent.log')
 logging.basicConfig(
@@ -87,41 +89,32 @@ def create_session():
 
 class WindowsAgent:
     def __init__(self):
-        self.api_url = "http://localhost:8000/api"
-        self.ws_url = "ws://localhost:8080/ws"
-        self.data_dir = os.path.join(os.getenv('APPDATA'), 'ActivTrack')
+        self.api_url = "http://127.0.0.1:8000"
+        self.ws_url = "ws://127.0.0.1:8000/ws/agent-status"
+        appdata = os.getenv('APPDATA') or os.path.expanduser('~')
+        self.data_dir = os.path.join(appdata, 'ActivTrack')
         os.makedirs(self.data_dir, exist_ok=True)
-        
-        # Create session with retries
         self.session = create_session()
-        
-        # WebSocket connection
         self.ws = None
         self.ws_connected = False
         self.ws_thread = None
-        
-        # Agent identification
-        self.agent_id = str(uuid.uuid4())
         self.organization_id = TEST_ORG_ID
         self.user_id = None
-        self.team_id = None
         self.token = None
-        
-        # Load or create agent ID
+        # Robust agent_id logic (integer)
+        self.agent_id = 0
         self.agent_id_file = os.path.join(self.data_dir, 'agent_id')
         if os.path.exists(self.agent_id_file):
             with open(self.agent_id_file, 'r') as f:
-                self.agent_id = f.read().strip()
-        else:
-            with open(self.agent_id_file, 'w') as f:
-                f.write(self.agent_id)
-
+                try:
+                    self.agent_id = int(f.read().strip())
+                except Exception:
+                    self.agent_id = 0
         self.last_window = None
         self.last_window_start = None
-        self.idle_threshold = 300  # 5 minutes in seconds
+        self.idle_threshold = 300
         self.was_idle = False
         self.idle_start_time = None
-        self.team_id = 12
 
     def on_ws_message(self, ws, message):
         try:
@@ -144,105 +137,92 @@ class WindowsAgent:
     def on_ws_open(self, ws):
         print("WebSocket connection established")
         self.ws_connected = True
-        # Send initial subscription message
-        if self.user_id and self.team_id:
+        # No team_id, so just send user_id if needed
+        if self.user_id:
             ws.send(json.dumps({
                 "type": "subscribe",
                 "data": {
-                    "userId": self.user_id,
-                    "teamId": self.team_id
+                    "userId": self.user_id
                 }
             }))
 
-    def connect_websocket(self):
-        if self.ws_connected:
-            return
+    def agent_login(self):
+        # Passwordless agent login/registration
+        login_data = {
+            "organization_id": int(self.organization_id),
+            "agent_id": int(self.agent_id) if self.agent_id else 0
+        }
+        print(f"Agent login payload: {login_data}")
+        try:
+            resp = self.session.post(f"{self.api_url}/auth/agent-login", json=login_data)
+            print(f"Agent login response: {resp.status_code} {resp.text}")
+            if resp.status_code == 200:
+                data = resp.json()
+                self.token = data.get("access_token")
+                self.user_id = data.get("user_id")
+                print(f"Agent login successful. user_id={self.user_id}")
+                return True
+            else:
+                print(f"Agent login failed: {resp.status_code} {resp.text}")
+                return False
+        except Exception as e:
+            print(f"Agent login error: {e}")
+            return False
 
+    def register_agent(self):
+        # Register agent config with backend (after login)
+        if not self.token:
+            print("No JWT token, cannot register agent config.")
+            return False
+        system_info = {
+            'hostname': platform.node(),
+            'os': platform.system(),
+            'os_version': platform.version(),
+            'machine': platform.machine(),
+            'processor': platform.processor()
+        }
+        reg_data = {
+            'agent_id': self.agent_id if self.agent_id else 0,  # 0 or omit for new agent
+            'organization_id': self.organization_id,
+            'user_id': self.user_id,
+            'machine_info': system_info
+        }
+        headers = {'Authorization': f'Bearer {self.token}'}
+        resp = self.session.post(f"{self.api_url}/agents/register", json=reg_data, headers=headers)
+        print(f"Agent config registration status: {resp.status_code}")
+        print(f"Response: {resp.text}")
+        if resp.status_code in (200, 201, 409):
+            try:
+                data = resp.json()
+                assigned_id = data.get("agent_id")
+                if assigned_id and assigned_id != self.agent_id:
+                    self.agent_id = assigned_id
+                    with open(self.agent_id_file, 'w') as f:
+                        f.write(str(self.agent_id))
+                    print(f"Saved assigned agent_id: {self.agent_id}")
+            except Exception as e:
+                print(f"Error parsing agent_id from response: {e}")
+            return True
+        return False
+
+    def connect_websocket(self):
+        if self.ws_connected or not self.token:
+            return
+        ws_url = f"ws://127.0.0.1:8000/ws/agent-status?token={self.token}"
         try:
             self.ws = websocket.WebSocketApp(
-                self.ws_url,
+                ws_url,
                 on_message=self.on_ws_message,
                 on_error=self.on_ws_error,
                 on_close=self.on_ws_close,
                 on_open=self.on_ws_open
             )
-            
             self.ws_thread = threading.Thread(target=self.ws.run_forever)
             self.ws_thread.daemon = True
             self.ws_thread.start()
         except Exception as e:
             print(f"Error connecting to WebSocket: {e}")
             self.ws_connected = False
-
-    def register_agent(self):
-        try:
-            print(f"Registering agent with organization {TEST_ORG_NAME}...")
-            
-            # Get system info
-            system_info = {
-                'hostname': platform.node(),
-                'os': platform.system(),
-                'os_version': platform.version(),
-                'machine': platform.machine(),
-                'processor': platform.processor()
-            }
-            
-            # Registration data
-            reg_data = {
-                'agentId': self.agent_id,
-                'organizationId': self.organization_id,
-                'machineInfo': system_info,
-                'name': f"Agent-{platform.node()}",
-                'email': f"agent-{self.agent_id}@{TEST_ORG_NAME.lower().replace(' ', '-')}.local"
-            }
-            
-            print(f"Sending registration request to {self.api_url}/agents/register")
-            print(f"Registration data: {json.dumps(reg_data, indent=2)}")
-            
-            # Try to register
-            response = self.session.post(
-                f"{self.api_url}/agents/register",
-                json=reg_data
-            )
-            
-            print(f"Registration response status: {response.status_code}")
-            print(f"Registration response body: {response.text}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.user_id = data.get('userId')
-                self.team_id = data.get('teamId')
-                self.token = data.get('token')
-                print(f"Registration successful! User ID: {self.user_id}, Team ID: {self.team_id}")
-                
-                # Save credentials
-                config = {
-                    'agent_id': self.agent_id,
-                    'organization_id': self.organization_id,
-                    'user_id': self.user_id,
-                    'team_id': self.team_id,
-                    'token': self.token
-                }
-                
-                with open(os.path.join(self.data_dir, 'config.json'), 'w') as f:
-                    json.dump(config, f, indent=2)
-                
-                return True
-            elif response.status_code == 500 and "duplicate key value" in response.text:
-                # If we get a duplicate key error, generate a new agent ID and try again
-                print("Agent ID already exists, generating a new one...")
-                self.agent_id = str(uuid.uuid4())
-                with open(self.agent_id_file, 'w') as f:
-                    f.write(self.agent_id)
-                return self.register_agent()  # Try again with new ID
-            else:
-                print(f"Registration failed: {response.status_code}")
-                print(f"Error message: {response.text}")
-                return False
-                
-        except Exception as e:
-            print(f"Error during registration: {e}")
-            return False
 
     def get_active_window(self):
         try:
@@ -281,34 +261,30 @@ class WindowsAgent:
                 duration = 0
             # Create activity data
             activity_data = {
-                "userId": self.user_id,
-                "teamId": self.team_id,
+                "organization_id": self.organization_id,
+                "user_id": self.user_id or 0,
+                "agent_id": self.agent_id,
                 "timestamp": datetime.now().isoformat(),
                 "application": window_info['application'],
                 "title": window_info['title'],
-                "isActive": idle_time < self.idle_threshold,
-                "idleTime": int(idle_time),
+                "is_active": idle_time < self.idle_threshold,
+                "idle_time": int(idle_time),
                 "duration": duration,
                 "metrics": {
                     "cpu": psutil.cpu_percent(),
                     "memory": psutil.virtual_memory().percent
                 }
             }
-            # Send activity data with token
             headers = {'Authorization': f'Bearer {self.token}'} if self.token else {}
+            print(f"Sending activity: {activity_data}")
             response = self.session.post(
-                f"{self.api_url}/activity",
-                json=activity_data,
+                f"{self.api_url}/activities/ingest",
+                json=[activity_data],
                 headers=headers
             )
-            if response.status_code == 200:
+            print(f"Activity response: {response.status_code} {response.text}")
+            if response.status_code == 200 or response.status_code == 201:
                 print(f"Activity sent successfully: {activity_data}")
-                # Also send via WebSocket if connected
-                if self.ws_connected and self.ws:
-                    self.ws.send(json.dumps({
-                        "type": "activity",
-                        "data": activity_data
-                    }))
             else:
                 print(f"Error sending activity: {response.status_code}")
                 print(f"Error message: {response.text}")
@@ -320,33 +296,23 @@ class WindowsAgent:
         print(f"API URL: {self.api_url}")
         print(f"WebSocket URL: {self.ws_url}")
         print(f"Organization: {TEST_ORG_NAME} (ID: {TEST_ORG_ID})")
-        # Load saved config if exists
-        config_file = os.path.join(self.data_dir, 'config.json')
-        if os.path.exists(config_file):
-            try:
-                with open(config_file, 'r') as f:
-                    config = json.load(f)
-                    self.user_id = config.get('user_id')
-                    self.team_id = config.get('team_id')
-                    self.token = config.get('token')
-                    print(f"Loaded saved configuration - User ID: {self.user_id}, Team ID: {self.team_id}")
-            except Exception as e:
-                print(f"Error loading config: {e}")
-        # Register agent if not already registered
-        if not self.user_id or not self.team_id:
-            if not self.register_agent():
-                print("Failed to register agent. Exiting...")
-                return
+        # Passwordless agent login
+        if not self.agent_login():
+            print("Failed to login/register agent. Exiting...")
+            return
+        # Register agent config
+        if not self.register_agent():
+            print("Failed to register agent config. Exiting...")
+            return
         # Connect to WebSocket
         self.connect_websocket()
-        # Initialize last window and start time
+        # Main activity tracking loop (unchanged)
         self.last_window = self.get_active_window()
         self.last_window_start = datetime.now()
         self.last_activity_sent = self.last_window_start
         self.cpu_usages = []
         self.mem_usages = []
-        report_interval = 300  # 5 minutes in seconds
-        # Main activity tracking loop
+        report_interval = 300
         while True:
             try:
                 current_window = self.get_active_window()
@@ -361,10 +327,6 @@ class WindowsAgent:
                 idle_time = self.get_idle_duration()
                 if window_changed or time_since_last_sent >= report_interval or idle_time >= self.idle_threshold:
                     duration = (now - self.last_window_start).total_seconds()
-                    min_cpu = min(self.cpu_usages) if self.cpu_usages else 0
-                    max_cpu = max(self.cpu_usages) if self.cpu_usages else 0
-                    min_mem = min(self.mem_usages) if self.mem_usages else 0
-                    max_mem = max(self.mem_usages) if self.mem_usages else 0
                     self.track_activity(
                         self.last_window,
                         duration=duration,
