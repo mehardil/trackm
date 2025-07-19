@@ -312,7 +312,7 @@ class WindowsAgent:
         self.last_activity_sent = self.last_window_start
         self.cpu_usages = []
         self.mem_usages = []
-        report_interval = 300
+        report_interval = 300  # 5 minutes
         while True:
             try:
                 current_window = self.get_active_window()
@@ -325,7 +325,8 @@ class WindowsAgent:
                 )
                 time_since_last_sent = (now - self.last_activity_sent).total_seconds()
                 idle_time = self.get_idle_duration()
-                if window_changed or time_since_last_sent >= report_interval or idle_time >= self.idle_threshold:
+                # Send activity if window changed or 5 minutes passed since last send
+                if window_changed or time_since_last_sent >= report_interval:
                     duration = (now - self.last_window_start).total_seconds()
                     self.track_activity(
                         self.last_window,

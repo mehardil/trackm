@@ -106,7 +106,7 @@ class DesktopAgent:
         logger.info(f"API Endpoint: {self.api_endpoint}")
         logger.info(f"WebSocket Endpoint: {self.ws_endpoint}")
         
-        # Load configuration
+        # Load configuration (but ignore user_id from config)
         self.load_config()
         
         # Set organization ID from command line args if provided
@@ -118,6 +118,12 @@ class DesktopAgent:
             logger.error("Organization ID is required. Please provide it via config file or command line argument.")
             sys.exit(1)
         
+        # Always perform login to get fresh user_id
+        if not self.login_agent():
+            logger.error("Agent login failed, cannot continue.")
+            sys.exit(1)
+        logger.info(f"Agent login complete. user_id={self.user_id}")
+        
         # Register signal handlers for clean shutdown
         signal.signal(signal.SIGINT, self.handle_signal)
         signal.signal(signal.SIGTERM, self.handle_signal)
@@ -128,7 +134,7 @@ class DesktopAgent:
         self.running = False
     
     def load_config(self) -> None:
-        """Load configuration from file"""
+        """Load configuration from file, but do not load user_id from config"""
         try:
             if CONFIG_PATH.exists():
                 with open(CONFIG_PATH, 'r') as f:
@@ -137,20 +143,19 @@ class DesktopAgent:
                     self.organization_id = config.get('organization_id', self.organization_id)
                     self.api_endpoint = config.get('api_endpoint', self.api_endpoint)
                     self.ws_endpoint = config.get('ws_endpoint', self.ws_endpoint)
-                    self.user_id = config.get('user_id')
                     self.jwt = config.get('jwt')
                     self.screenshot_enabled = config.get('screenshot_enabled', True)
                     self.activity_tracking_enabled = config.get('activity_tracking_enabled', True)
                     self.idle_threshold = config.get('idle_threshold', 300)
                     self.restricted_apps = config.get('restricted_apps', [])
-                    logger.info(f"Loaded saved configuration - User ID: {self.user_id}, Organization ID: {self.organization_id}")
+                    logger.info(f"Loaded saved configuration - Organization ID: {self.organization_id}")
             else:
                 logger.warning(f"Config file not found at {CONFIG_PATH}")
         except Exception as e:
             logger.error(f"Error loading config: {e}")
     
     def save_config(self) -> None:
-        """Save current configuration to config file"""
+        """Save current configuration to config file (do not save user_id)"""
         try:
             config = {
                 'device_id': self.device_id,
@@ -160,7 +165,8 @@ class DesktopAgent:
                 'screenshot_enabled': self.screenshot_enabled,
                 'activity_tracking_enabled': self.activity_tracking_enabled,
                 'idle_threshold': self.idle_threshold,
-                'restricted_apps': self.restricted_apps
+                'restricted_apps': self.restricted_apps,
+                'jwt': self.jwt
             }
             
             with open(CONFIG_PATH, "w") as f:
@@ -586,6 +592,35 @@ class DesktopAgent:
             logger.error(f"Error registering with server: {e}")
             return False
     
+    def login_agent(self):
+        """Login or register agent user and get JWT and user_id from FastAPI backend"""
+        try:
+            # Remove trailing /api if present for base URL
+            api_base = self.api_endpoint
+            if api_base.endswith('/api'):
+                api_base = api_base[:-4]
+            response = requests.post(
+                f"{api_base}/auth/agent-login",
+                json={
+                    "organization_id": self.organization_id,
+                    "agent_id": self.device_id  # Use device_id as agent_id if integer not available
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.jwt = data.get("access_token")
+                self.user_id = data.get("user_id")
+                self.save_config()
+                logger.info(f"Agent login successful. user_id={self.user_id}")
+                return True
+            else:
+                logger.error(f"Agent login failed: {response.status_code} {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Error during agent login: {e}")
+            return False
+
     def send_activity_data(self, activity_data: Dict[str, Any]) -> bool:
         """Send activity data to the server"""
         try:
@@ -593,20 +628,18 @@ class DesktopAgent:
                 "Authorization": f"Bearer {self.jwt}",
                 "Content-Type": "application/json"
             }
-            
             response = requests.post(
                 f"{self.api_endpoint}/agent/data",
                 json={
                     "device_id": self.device_id,
                     "organization_id": self.organization_id,
-                    "user_id": self.user_id,
+                    "user_id": self.user_id,  # Always use self.user_id
                     "team_id": self.team_id,
                     "data": activity_data
                 },
                 headers=headers,
                 timeout=10
             )
-            
             if response.status_code == 200:
                 logger.debug(f"Successfully sent activity data: {activity_data}")
                 return True
@@ -838,6 +871,11 @@ class DesktopAgent:
                 logger.warning("Agent initialization failed, will retry...")
                 time.sleep(30)
                 return
+        # Ensure agent is logged in and has user_id
+        if not self.jwt or not self.user_id:
+            if not self.login_agent():
+                logger.error("Agent login failed, cannot continue.")
+                sys.exit(1)
         
         # Start WebSocket thread
         if not self.ws_thread or not self.ws_thread.is_alive():
@@ -917,6 +955,10 @@ class DesktopAgent:
                     # Continue recording but mark as restricted
                     activity_data["is_restricted"] = True
 
+            # Always use self.user_id in activity payload
+            activity_data["user_id"] = self.user_id
+            activity_data["organization_id"] = self.organization_id
+            activity_data["agent_id"] = self.device_id
             response = requests.post(
                 f"{self.api_endpoint}/activity",
                 headers={"Authorization": f"Bearer {self.jwt}"},
