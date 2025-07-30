@@ -1,30 +1,29 @@
-
+import logging
 from database import get_connection
+import psycopg2
+import psycopg2.extras
+import jwt
+SECRET_KEY = "mehardil123"
 
-def login():
-    return None
-
-
-
-def login(username, password):
-    conn = get_connection()
-    cursor = conn.cursor()
-    sql = """
-    SELECT * FROM users where username = %s and password = %s;
-    """
-    params = (username, password)
+async def login(username, password):
+    logging.info(f"Called login with username={username}")
     try:
-        cursor.execute(sql, params)
-        rec = cursor.fetchone()
-        if rec:
-            print("Record fetched successfully.", rec)
-            return True
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM users")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if result:
+            # Create JWT token
+            token = jwt.encode({"user_id": result["id"], "username": result["username"]}, SECRET_KEY, algorithm="HS256")
+            logging.info("login succeeded, JWT token created")
+            return {"token": token, "user": result}
         else:
-            print("No matching record found.")
+            logging.info("login failed: invalid credentials")
             return False
     except Exception as e:
-        print(f"Failed to fetch record from database: {e}")
+        logging.error(f"login failed: {e}")
         return False
     finally:
-        cursor.close()
-        
+        pass
