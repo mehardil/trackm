@@ -4,14 +4,19 @@ In this file we will make connection with PostgreSQL database
 
 import psycopg2
 from psycopg2 import OperationalError
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 def get_connection():
     db_config = {
-        "host": 'localhost',
-        "port": 5432,  # custom PostgreSQL port
-        "user": 'postgres',
-        "password": 'Me##1234', 
-        "dbname": 'tracknew1'
+        "host": os.getenv('DB_HOST', 'localhost'),
+        "port": int(os.getenv('DB_PORT', 5432)),
+        "user": os.getenv('DB_USER', 'postgres'),
+        "password": os.getenv('DB_PASSWORD', 'Me##1234'),
+        "dbname": os.getenv('DB_NAME', 'tracknew1')
     }
 
     try:
