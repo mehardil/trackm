@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" 
+           Name="ActivTrack Agent" 
+           Language="1033" 
+           Version="1.0.0.0" 
+           Manufacturer="ActivTrack Solutions" 
+           UpgradeCode="3f2504e0-4f89-11d3-9a0c-0305e82c3301">
+    
+    <Package InstallerVersion="500" 
+             Compressed="yes" 
+             InstallScope="perMachine"
+             Description="ActivTrack Agent - Activity Monitoring Software"
+             Comments="Installs ActivTrack Agent for activity monitoring and time tracking"
+             Manufacturer="ActivTrack Solutions"
+             Keywords="activity,monitoring,time,tracking,productivity"
+             Languages="1033" />
+
+    <!-- Upgrade handling -->
+    <MajorUpgrade AllowDowngrades="no" 
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    
+    <!-- Media -->
+    <Media Id="1" Cabinet="product.cab" EmbedCab="yes" />
+
+    <!-- Token property - can be set via command line -->
+    <Property Id="AGENT_TOKEN" Value="" Secure="yes" />
+    
+    <!-- Installation properties -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    
+    <!-- Custom action to configure agent with token -->
+    <CustomAction Id="ConfigureAgentToken" 
+                  Script="vbscript"
+                  Execute="immediate">
+      <![CDATA[
+        Dim token, appDataPath, tokenFile, fso, tokenFileObj
+        
+        ' Get the token from property
+        token = Session.Property("AGENT_TOKEN")
+        
+        If token <> "" Then
+          ' Get AppData path
+          appDataPath = CreateObject("WScript.Shell").ExpandEnvironmentStrings("%APPDATA%")
+          tokenFile = appDataPath & "\ActivTrack\.auth_token"
+          
+          ' Create ActivTrack directory if it doesn't exist
+          Set fso = CreateObject("Scripting.FileSystemObject")
+          If Not fso.FolderExists(appDataPath & "\ActivTrack") Then
+            fso.CreateFolder appDataPath & "\ActivTrack"
+          End If
+          
+          ' Write token to file
+          Set tokenFileObj = fso.CreateTextFile(tokenFile, True)
+          tokenFileObj.Write token
+          tokenFileObj.Close
+        End If
+      ]]>
+    </CustomAction>
+    
+    <!-- Custom action to start agent -->
+    <CustomAction Id="StartAgent" 
+                  FileKey="ActivTrackAgentExe"
+                  ExeCommand=""
+                  Return="asyncNoWait" />
+    
+    <!-- Custom action to stop agent before uninstall -->
+    <CustomAction Id="StopAgent" 
+                  Script="vbscript"
+                  Execute="immediate">
+      <![CDATA[
+        Dim objWMIService, colProcesses, objProcess
+        
+        ' Stop any running ActivTrackAgent processes
+        Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")
+        Set colProcesses = objWMIService.ExecQuery("SELECT * FROM Win32_Process WHERE Name = 'ActivTrackAgent.exe'")
+        
+        For Each objProcess in colProcesses
+          objProcess.Terminate
+        Next
+      ]]>
+    </CustomAction>
+    
+    <!-- Custom action to remove autostart -->
+    <CustomAction Id="RemoveAutostart" 
+                  Script="vbscript"
+                  Execute="immediate">
+      <![CDATA[
+        Dim objShell, regKey
+        
+        ' Remove from autostart
+        Set objShell = CreateObject("WScript.Shell")
+        On Error Resume Next
+        objShell.RegDelete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ActivTrack Agent"
+        On Error GoTo 0
+      ]]>
+    </CustomAction>
+    
+    <!-- Install sequence -->
+    <InstallExecuteSequence>
+      <Custom Action="ConfigureAgentToken" After="InstallFiles">AGENT_TOKEN</Custom>
+      <Custom Action="StartAgent" After="ConfigureAgentToken">NOT Installed</Custom>
+      <Custom Action="StopAgent" Before="RemoveFiles">Installed</Custom>
+      <Custom Action="RemoveAutostart" After="StopAgent">Installed</Custom>
+    </InstallExecuteSequence>
+
+    <!-- UI sequence -->
+    <UIRef Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+    
+    <Feature Id="ProductFeature" Title="ActivTrack Agent" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="ActivTrackAgent">
+          <Directory Id="AgentFolder" Name="Agent" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ProgramMenuDir" Name="ActivTrack Agent" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+      <Directory Id="AppDataFolder">
+        <Directory Id="ActivTrackAppData" Name="ActivTrackAgent" />
+      </Directory>
+      <Directory Id="SystemFolder" />
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <!-- Main executable -->
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="ActivTrackAgentExe" 
+              Source=".\build\exe.win-amd64-3.13\ActivTrackAgent.exe" 
+              KeyPath="yes" />
+      </Component>
+
+      <!-- Configuration files -->
+      <Component Id="ConfigFiles" Guid="*">
+        <File Id="ConfigJson" Source=".\config.json" KeyPath="yes" />
+        <File Id="RequirementsTxt" Source=".\requirements.txt" />
+      </Component>
+
+      <!-- Documentation -->
+      <Component Id="Documentation" Guid="*">
+        <File Id="ReadmeMd" Source=".\README_BUILD.md" KeyPath="yes" />
+        <File Id="InstallationGuideMd" Source=".\INSTALLATION_GUIDE.md" />
+      </Component>
+
+      <!-- Shortcuts and registry -->
+      <Component Id="ShortcutsComponent" Guid="*">
+        <RegistryValue Root="HKCU" 
+                       Key="SOFTWARE\ActivTrack\Agent" 
+                       Name="Installed" 
+                       Type="integer" 
+                       Value="1" 
+                       KeyPath="yes" />
+
+        <!-- Start Menu Shortcut -->
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="ProgramMenuDir"
+                  Name="ActivTrack Agent"
+                  WorkingDirectory="AgentFolder"
+                  Target="[INSTALLFOLDER]\Agent\ActivTrackAgent.exe"
+                  Advertise="no" />
+
+        <!-- Desktop Shortcut -->
+        <Shortcut Id="DesktopShortcut"
+                  Directory="DesktopFolder"
+                  Name="ActivTrack Agent"
+                  WorkingDirectory="AgentFolder"
+                  Target="[INSTALLFOLDER]\Agent\ActivTrackAgent.exe"
+                  Advertise="no" />
+
+        <!-- Uninstall Shortcut -->
+        <Shortcut Id="UninstallShortcut"
+                  Directory="ProgramMenuDir"
+                  Name="Uninstall ActivTrack Agent"
+                  Target="[SystemFolder]msiexec.exe"
+                  Arguments="/x [ProductCode]" />
+
+        <!-- Ensure ProgramMenuDir is removed -->
+        <RemoveFile Id="RemoveProgramMenuDirFiles"
+                    Name="*"
+                    On="uninstall"
+                    Directory="ProgramMenuDir" />
+        <RemoveFolder Id="RemoveProgramMenuDirFolder"
+                      Directory="ProgramMenuDir"
+                      On="uninstall" />
+      </Component>
+
+      <!-- AppData cleanup -->
+      <Component Id="AppDataCleanup" Guid="87654321-4321-4321-4321-210987654321">
+        <RegistryValue Root="HKCU"
+                       Key="Software\ActivTrack\Agent"
+                       Name="AppDataInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+
+        <CreateFolder />
+
+        <RemoveFile Id="RemoveActivTrackAppDataFiles"
+                    Name="*"
+                    On="uninstall"
+                    Directory="ActivTrackAppData" />
+        <RemoveFolder Id="RemoveActivTrackAppDataFolder"
+                      Directory="ActivTrackAppData"
+                      On="uninstall" />
+      </Component>
+
+      <!-- Service registration (if needed) -->
+      <Component Id="ServiceRegistration" Guid="*">
+        <RegistryValue Root="HKCU"
+                       Key="Software\ActivTrack\Agent"
+                       Name="ServiceInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

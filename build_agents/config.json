@@ -1,0 +1,10 @@
+// #{
+// #  "device_id": "abe50610-11d2-4acc-9ebd-4b8c84f08c1c",
+//   "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+//   "api_endpoint": "http://localhost:8000/api",
+//   "ws_endpoint": "ws://localhost:8080/ws",
+//   "organization_id": 50,
+//   "team_id": 1,
+//   "screenshot_enabled": true,
+//   "activity_tracking_enabled": true
+// } 

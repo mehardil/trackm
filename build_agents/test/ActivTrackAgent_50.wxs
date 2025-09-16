@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" 
+           Name="ActivTrackAgent" 
+           Language="1033" 
+           Version="1.0.0" 
+           Manufacturer="ActivTrack" 
+           UpgradeCode="PUT-GUID-HERE">
+    
+    <Package InstallerVersion="200" 
+             Compressed="yes" 
+             InstallScope="perMachine" 
+             Description="ActivTrack Activity Monitoring Agent" />
+    
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate />
+    
+    <Feature Id="ProductFeature" Title="ActivTrackAgent" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+    
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="ActivTrackAgent">
+          <Component Id="MainExecutable" Guid="*">
+            <File Id="ActivTrackAgentExe" 
+                  Source="dist\ActivTrackAgent_Single\ActivTrackAgent.exe" 
+                  KeyPath="yes" />
+          </Component>
+          
+          <Component Id="ServiceFiles" Guid="*">
+            <File Id="WindowsAgentUpdated" 
+                  Source="windows_agent-updated.py" />
+            <File Id="WindowsServiceAgent" 
+                  Source="windows_service_agent.py" />
+            <File Id="ServiceConfig" 
+                  Source="service_config.json" />
+            <File Id="InstallService" 
+                  Source="install_service.py" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="ServiceFiles" />
+    </ComponentGroup>
+    
+    <!-- Service Installation -->
+    <Component Id="ServiceComponent" Directory="INSTALLFOLDER" Guid="*">
+      <ServiceInstall Id="ActivTrackService"
+                      Type="ownProcess"
+                      Name="ActivTrackAgent"
+                      DisplayName="ActivTrack Agent Service"
+                      Description="ActivTrack Activity Monitoring Agent Service"
+                      Start="auto"
+                      Account="LocalSystem"
+                      ErrorControl="normal" />
+      
+      <ServiceControl Id="ActivTrackService"
+                      Stop="both"
+                      Remove="uninstall"
+                      Name="ActivTrackAgent"
+                      Wait="yes" />
+    </Component>
+    
+  </Product>
+</Wix>

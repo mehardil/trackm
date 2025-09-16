@@ -1,0 +1,17 @@
+{
+    "name": "ActivTrackAgent",
+    "version": "1.0.0",
+    "description": "ActivTrack Activity Monitoring Agent",
+    "author": "ActivTrack",
+    "executable": "windows_service_agent.py",
+    "service_name": "ActivTrackAgent",
+    "service_display_name": "ActivTrack Agent Service",
+    "service_description": "ActivTrack Activity Monitoring Agent Service",
+    "auto_start": true,
+    "files": [
+        "windows_agent-updated.py",
+        "windows_service_agent.py",
+        "service_config.json",
+        "install_service.py"
+    ]
+}

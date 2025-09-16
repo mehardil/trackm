@@ -1,0 +1,6 @@
+{
+  "device_id": "YOUR_DEVICE_ID",
+  "jwt": "YOUR_JWT_TOKEN",
+  "api_endpoint": "http://localhost:5000/api",
+  "ws_endpoint": "ws://localhost:5000/ws"
+}
