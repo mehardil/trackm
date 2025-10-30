@@ -181,10 +181,7 @@ def verify_organization_otp(org_id, otp):
     try:
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                
-                # Ensure types match DB schema (otp is stored as VARCHAR)
                 otp_str = str(otp)
-                
                 cursor.execute(
                     "SELECT 1 FROM organization_otps WHERE org_id = %s AND otp = %s AND expiry > %s",
                     (org_id, otp_str, datetime.utcnow())
@@ -192,19 +189,14 @@ def verify_organization_otp(org_id, otp):
                 otp_record = cursor.fetchone()
                 
                 if otp_record:
-                    # Activate the organization
                     cursor.execute(
                         "UPDATE organizations SET is_active = %s WHERE id = %s",
                         (True, org_id)
                     )
-                    
-                    # Also activate all users in this organization
                     cursor.execute(
                         "UPDATE users SET status = %s WHERE organization_id = %s",
                         ('active', org_id)
                     )
-                    
-                    # Delete the used OTP
                     cursor.execute(
                         "DELETE FROM organization_otps WHERE org_id = %s",
                         (org_id,)

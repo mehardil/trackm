@@ -1,21 +1,16 @@
+# service/filter_service.py
 import logging
 from database_clickhouse import clickhouse_connection
 
 async def filter_activites_logs(filters):
     logging.info(f"Called filter_activites_logs with filters={filters}")
     client = clickhouse_connection()
+
     base_query = "SELECT * FROM activities"
     conditions = []
     params = {}
-    column_map = {
-        "organization_id": "organization_id",
-        "user_id": "user_id",
-        "team_id": "group_id",  
-        "start_date": "start_time",
-        "end_date": "start_time",
-        "start_time": "start_time",
-        "end_time": "end_time"
-    }
+
+    # Conditions
     if "organization_id" in filters:
         conditions.append("organization_id = %(organization_id)s")
         params["organization_id"] = int(filters["organization_id"])
@@ -35,28 +30,22 @@ async def filter_activites_logs(filters):
     elif "end_date" in filters:
         conditions.append("toDate(start_time) <= toDate(%(end_date)s)")
         params["end_date"] = filters["end_date"]
-    if "start_time" in filters:
-        conditions.append("start_time >= %(start_time)s")
-        params["start_time"] = filters["start_time"]
 
-    if "end_time" in filters:
-        conditions.append("end_time <= %(end_time)s")
-        params["end_time"] = filters["end_time"]
+    # WHERE clause
+    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    limit = filters.get("limit", 10)
+    offset = filters.get("offset", 0)
 
-    if conditions:
-        where_clause = " WHERE " + " AND ".join(conditions)
-        query = base_query + where_clause
-    else:
-        query = base_query
+    query = f"{base_query}{where_clause} ORDER BY start_time DESC LIMIT {limit} OFFSET {offset}"
+    logging.info(f"Executing Query: {query} with Params: {params}")
 
-    print("Executing Query:", query)
-    print("With Params:", params)
-    
     result = client.query(query, parameters=params)
     columns = result.column_names
     activities = [dict(zip(columns, row)) for row in result.result_rows]
-    print(len(activities) ,"here is length")
-    return activities
 
+    # For frontend pagination
+    total_count_query = f"SELECT count() FROM activities{where_clause}"
+    total_result = client.query(total_count_query, parameters=params)
+    total_count = total_result.result_rows[0][0] if total_result.result_rows else 0
 
-
+    return {"activities": activities, "total": total_count}

@@ -43,7 +43,6 @@ async def login(email, password):
             WHERE u.email = %s AND u.status = 'active'
         """, (email,))
         result = cursor.fetchone()
-
         if not result:
             logging.warning("Invalid email or password (user not found)")
             return {"success": False, "message": "Invalid email or password"}
@@ -65,10 +64,8 @@ async def login(email, password):
             "exp": datetime.utcnow() + timedelta(hours=config.JWT_EXPIRY_HOURS)
         }
         token = jwt.encode(token_data, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
-
         conn.commit()
         logging.info(f"User {email} logged in successfully")
-
         # Step 5: Return response
         return {
             "success": True,

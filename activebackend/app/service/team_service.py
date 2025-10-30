@@ -42,18 +42,12 @@ def create_team(data):
         conn = get_connection()
         if conn is None:
             return {"success": False, "message": "Database connection failed"}
-        
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT organization_id FROM users WHERE id = %s", (data.get("user_id"),))
-        user_organization = cursor.fetchone()
-        if user_organization is None:
+        user_organization_id = cursor.fetchone()
+        if user_organization_id  is None:
             return {"success": False, "message": "This organization does not exist"}
         # check creator role
-        sql = "SELECT role FROM users WHERE id = %s"
-        cursor.execute(sql, (data.get("user_id"),))
-        creater_role = cursor.fetchone()
-        if not creater_role or creater_role.get("role") != "admin":
-            raise ValueError("Creator is not admin, unable to create new group")
         query = """
             INSERT INTO groups (name, description, organization_id)
             VALUES (%s, %s, %s)
@@ -62,8 +56,6 @@ def create_team(data):
         cursor.execute(query, (data.get("team_name"), data.get("description"), data.get("org_id")))
         team_id = cursor.fetchone()["id"]
         conn.commit()
-
-        # fetch newly created team
         cursor.execute("SELECT * FROM groups WHERE id = %s", (team_id,))
         result = cursor.fetchone()
         if result:
@@ -93,7 +85,6 @@ def get_all_teams(data):
     conn = get_connection()
     if conn is None:
         return {"success": False, "message": "Database connection failed"}
-    
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     user_id = data.get('user_id')
     org_id = data.get('org_id')
@@ -154,52 +145,71 @@ def get_team_by_id(team_id: int, user_id: int):
 
 
 
-def update_team(team_id: int, data, user_id: int):
-    org_check = check_user_organization(user_id, team_id)
-    if isinstance(org_check, dict) and "error" in org_check:
-        return org_check
+def update_team(team_id:int,organization_id:int,team_name:str,description:str):
+    print("here is value")
+    print(team_id,organization_id,team_name,description)
     conn = get_connection()
-    if conn is None:
-        return {"error": "Database connection failed."}
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT id FROM groups WHERE id = %s AND organization_id = %s", (team_id, organization_id))
+    team = cursor.fetchone()
     
-    cursor = conn.cursor(dictionary=True)
-    updates = []
-    values = []
-
-    for field in ["name", "description", "owner_id", "organization_id"]:
-        value = getattr(data, field, None)
-        if value is not None:
-            updates.append(f"{field} = %s")
-            values.append(value)
-    if not updates:
+    if not team:
         cursor.close()
         conn.close()
-        return {"error": "No fields to update."}
-    values.append(team_id)
-    sql = f"UPDATE teams SET {', '.join(updates)} WHERE id = %s"
-    cursor.execute(sql, tuple(values))
+        return {"error": "Team not found"}
+    
+    sql = f"UPDATE groups SET name = '{team_name}',description = '{description}' WHERE id = {team_id} and organization_id = {organization_id}"
+    print(sql)
+    cursor.execute(sql)
     conn.commit()
-    cursor.execute("SELECT * FROM teams WHERE id = %s", (team_id,))
+    cursor.execute("SELECT * FROM groups WHERE id = %s", (team_id,))
     updated = cursor.fetchone()
+    if updated:
+        return {
+            "success": True,
+            "message": "Team updated successfully.",
+            "team_id": team_id
+        }
     cursor.close()
     conn.close()
     return updated
 
 
-def delete_team(team_id: int, user_id: int):
-    org_check = check_user_organization(user_id, team_id)
-    if isinstance(org_check, dict) and "error" in org_check:
-        return org_check
-    conn = get_connection()
-    if conn is None:
-        return {"error": "Database connection failed."}
-    
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return True
+def delete_team(team_name: str, organization_id: int):
+    try:
+        conn = get_connection()
+        if conn is None:
+            return {"error": "connection failed"}
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT id FROM groups WHERE name = %s AND organization_id = %s", (team_name, organization_id))
+        team = cursor.fetchone()
+        if not team:
+            cursor.close()
+            conn.close()
+            return {"error": "Team not found"}
+        team_id = team['id']
+        cursor.execute("DELETE FROM groups WHERE id = %s AND organization_id = %s", (team_id, organization_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {
+            "success": True,
+            "message": "Team deleted successfully.",
+            "team_id": team_id
+        }
+    except Exception as e:
+        if 'conn' in locals():
+            conn.rollback()
+        return {"error": f"Error deleting team: {str(e)}"}
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+
+
 
 
 def get_team_users(team_id: int, user_id: int):
@@ -288,52 +298,35 @@ def assign_users_to_team(team_id: int, user_emails: list, organization_id: int):
         conn = get_connection()
         if not conn:
             return {"success": False, "message": "Database connection failed"}
-        
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # First verify the team exists and get its organization_id
         cursor.execute("SELECT organization_id FROM groups WHERE id = %s", (team_id,))
         team = cursor.fetchone()
-        
         if not team:
             return {"success": False, "message": "Team not found"}
-        
         if team['organization_id'] != organization_id:
             return {"success": False, "message": "Team does not belong to this organization"}
         
-        # Get user IDs by email addresses
         placeholders = ','.join(['%s'] * len(user_emails))
         query = f"SELECT id, email FROM users WHERE email IN ({placeholders}) AND organization_id = %s"
-        
         cursor.execute(query, user_emails + [organization_id])
         users = cursor.fetchall()
-        
         if not users:
             return {"success": False, "message": "No users found with the provided emails in this organization"}
         
-        # Check which users are already assigned to this team
         user_ids = [user['id'] for user in users]
-        
         placeholders = ','.join(['%s'] * len(user_ids))
         cursor.execute(f"SELECT user_id FROM user_groups WHERE group_id = %s AND user_id IN ({placeholders})", 
                       [team_id] + user_ids)
         existing_assignments = cursor.fetchall()
         existing_user_ids = [assignment['user_id'] for assignment in existing_assignments]
         
-        # Filter out users already assigned to this team
         new_user_ids = [user_id for user_id in user_ids if user_id not in existing_user_ids]
-        
         if not new_user_ids:
             return {"success": False, "message": "All users are already assigned to this team"}
-        
-        # Insert new assignments
         for user_id in new_user_ids:
             cursor.execute("INSERT INTO user_groups (user_id, group_id, organization_id) VALUES (%s, %s, %s)",
                          (user_id, team_id, organization_id))
-        
         conn.commit()
-        
-        # Get the newly assigned users with correct column names
         placeholders = ','.join(['%s'] * len(new_user_ids))
         cursor.execute(f"""
             SELECT 
@@ -372,15 +365,11 @@ def get_team_members(team_id: int, organization_id: int):
         conn = get_connection()
         if conn is None:
             return {"success": False, "message": "Database connection failed"}
-        
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # Verify the team exists and belongs to the organization
         cursor.execute("SELECT organization_id FROM groups WHERE id = %s", (team_id,))
         team = cursor.fetchone()
         if not team:
             return {"success": False, "message": "Team not found"}
-        
         if team['organization_id'] != organization_id:
             return {"success": False, "message": "Team does not belong to this organization"}
         
@@ -397,16 +386,13 @@ def get_team_members(team_id: int, organization_id: int):
             WHERE ug.group_id = %s AND ug.organization_id = %s
             ORDER BY u.name
         """, (team_id, organization_id))
-        
         team_members = cursor.fetchall()
-        
         return {
             "success": True,
             "message": f"Found {len(team_members)} team members",
             "team_id": team_id,
             "members": team_members
         }
-        
     except Exception as e:
         return {"success": False, "message": f"Error getting team members: {str(e)}"}
     finally:

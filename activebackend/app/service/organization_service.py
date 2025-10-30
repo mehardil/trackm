@@ -4,14 +4,13 @@ import psycopg2.extras
 import logging
 
 
-async def get_organization_by_id(organization_id: int):
+async def get_check_organization(organization_id: int):
     logging.info(f"Called get_organization_by_id with organization_id={organization_id}")
     try:
         conn = get_connection()
         if conn is None:
             logging.error("Failed to establish database connection")
             return None
-        
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT * FROM organizations WHERE id = %s", (organization_id,))
         result = cursor.fetchone()

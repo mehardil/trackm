@@ -2,25 +2,34 @@ import logging
 from tokenize import group
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
-from service import team_service,login_service
+from service import team_service,login_service,organization_service,user_service
+from pydantic import BaseModel
 
 
 router = APIRouter()
+
+class TeamUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
 
 @router.post("/create_team")
 async def create_team(request: Request, team_data: dict):
     """create new team"""
     token = request.headers.get("Authorization")
-    print(token ,"here is token")
     if not token or not token.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token_payload = login_service.decode_token(token.split(" ")[1])
-    print(team_data)
-    print("--------------------------")
-    print(token_payload)
+    organization_id = token_payload.get("org_id")
+    user_id = token_payload.get("user_id")
+    role = user_service.user_role_check(user_id)
+    valid_org = organization_service.get_check_organization(organization_id)
+    
+    if not valid_org:
+        raise HTTPException(status_code=400, detail="Invalid organization id")
+    if not role or role.lower() not in {"admin", "editor"}:
+        raise HTTPException(status_code=500, detail="User is not allowed teams ")
+
     group_input_details = {**team_data, **token_payload}
-    print(group_input_details)
- 
     try:
         team = team_service.create_team(group_input_details)
         if not team:
@@ -34,9 +43,6 @@ async def create_team(request: Request, team_data: dict):
         raise
 
 
-
-
-
 @router.get("/list_teams")
 async def list_of_teams(request: Request):
     """list of all teams"""
@@ -44,17 +50,13 @@ async def list_of_teams(request: Request):
     if not token or not token.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token_payload = login_service.decode_token(token.split(" ")[1])
-    print(token_payload)
+    organization_id = token_payload.get("org_id")
+    valid_org = organization_service.get_check_organization(organization_id)
+    if not valid_org:
+        raise HTTPException(status_code=400, detail="Invalid organization id")
     list_of_team = team_service.get_all_teams(token_payload)
     return list_of_team
  
-
-
-
-
-
-
-
 
 @router.post("/assign_teams")
 async def assign_users_to_team_endpoint(request: Request, payload: dict):
@@ -62,78 +64,25 @@ async def assign_users_to_team_endpoint(request: Request, payload: dict):
     token = request.headers.get("Authorization")
     if not token or not token.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
-    
-    try:
-        token_payload = login_service.decode_token(token.split(" ")[1])
-        user_id = token_payload.get("user_id")
-        organization_id = token_payload.get("org_id")
-        
-        if not user_id or not organization_id:
-            raise HTTPException(status_code=400, detail="Invalid token payload")
-        
-        team_id = payload.get("team_id")
-        user_emails = payload.get("user_emails", [])
-        
-        if not team_id:
-            raise HTTPException(status_code=400, detail="team_id is required")
-        
-        if not user_emails or not isinstance(user_emails, list):
-            raise HTTPException(status_code=400, detail="user_emails must be a non-empty list")
-        
-        # Call the service function
-        result = team_service.assign_users_to_team(team_id, user_emails, organization_id)
-        
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Failed to assign users to team"))
-        
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"assign_users_to_team failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-
-
-
-
-
-
-@router.get("/team_members/{team_id}")
-async def get_team_members_endpoint(request: Request, team_id: int):
-    """Get all users assigned to a specific team"""
-    token = request.headers.get("Authorization")
-    if not token or not token.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid token")
-    
-    try:
-        token_payload = login_service.decode_token(token.split(" ")[1])
-        organization_id = token_payload.get("org_id")
-        
-        if not organization_id:
-            raise HTTPException(status_code=400, detail="Invalid token payload")
-        
-        # Call the service function
-        print(team_id ,organization_id,"here is team id and organization id")
-        result = team_service.get_team_members(team_id, organization_id)
-        
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Failed to get team members"))
-        
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"get_team_members failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-
-
-
+    token_payload = login_service.decode_token(token.split(" ")[1])
+    user_id = token_payload.get("user_id")
+    role = user_service.user_role_check(user_id)
+    print(role)
+    if not role or role.lower() not in {"admin", "editor"}:
+        raise HTTPException(status_code=500, detail="User is not allowed to assign agent to teams ")
+    organization_id = token_payload.get("org_id")
+    if not user_id or not organization_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
+    team_id = payload.get("team_id")
+    user_emails = payload.get("user_emails", [])
+    if not team_id:
+        raise HTTPException(status_code=400, detail="team_id is required")
+    if not user_emails or not isinstance(user_emails, list):
+        raise HTTPException(status_code=400, detail="user_emails must be a non-empty list")
+    result = team_service.assign_users_to_team(team_id, user_emails, organization_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to assign users to team"))
+    return result
 
 
 
@@ -143,40 +92,89 @@ async def remove_users_from_team_endpoint(request: Request, payload: dict):
     token = request.headers.get("Authorization")
     if not token or not token.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
-    print(payload,"here is payload")
-    print(token,"here is token")
+    token_payload = login_service.decode_token(token.split(" ")[1])
+    organization_id = token_payload.get("org_id")
+    user_id = token_payload.get("user_id")
+    role = user_service.user_role_check(user_id)
+    print(payload ,"hFVHJV ghevcgha HDVGHVEFD hjEUFGVUYD HEDGFVUYEFDV hjfvdughvfg")
+    team_id = payload.get("team_id")
+    user_emails = payload.get("email")
+    
+
+    if not organization_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
+    if not role or role.lower() not in {"admin", "editor"}:
+        raise HTTPException(status_code=403, detail="User is not allowed to remove agent from teams")
+    if not team_id:
+        raise HTTPException(status_code=400, detail="team_id is required")
+    if not user_emails:
+        raise HTTPException(status_code=400, detail="user_emails must be a non-empty list")
+    
+    result = team_service.remove_users_from_team(team_id, user_emails, organization_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to remove users from team"))
+    return result
+        
+
+
+@router.delete("/delete_team/{team_name}")
+async def delete_team_endpoint(request: Request, team_name: str):
+    """Delete a team for if role is admin"""
+    token = request.headers.get("Authorization")
+    print(token, "here is token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
     try:
         token_payload = login_service.decode_token(token.split(" ")[1])
-        organization_id = token_payload.get("org_id")  # Fixed: use org_id instead of organization_id
-        
+        organization_id = token_payload.get("org_id")
+        user_id = token_payload.get("user_id")
+        role = user_service.user_role_check(user_id)
         if not organization_id:
             raise HTTPException(status_code=400, detail="Invalid token payload")
+        if not role or role.lower() not in {"admin", "editor"}:
+            raise HTTPException(status_code=403, detail="User is not allowed to remove agent from teams")
         
-        team_id = payload.get("team_id")
-        user_emails = payload.get("user_emails", [])
-        
-        if not team_id:
-            raise HTTPException(status_code=400, detail="team_id is required")
-        
-        if not user_emails or not isinstance(user_emails, list):
-            raise HTTPException(status_code=400, detail="user_emails must be a non-empty list")
-        
-        # Call the service function
-        result = team_service.remove_users_from_team(team_id, user_emails, organization_id)
-        
+
+        result = team_service.delete_team(team_name, organization_id)
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Failed to remove users from team"))
-        
+            raise HTTPException(status_code=400, detail=result.get("message", "Failed to delete team"))
         return result
-        
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"remove_users_from_team failed: {e}")
+        logging.error(f"delete_team failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
+@router.post("/update_team/{team_id}")
+async def update_team_endpoint(request: Request, team_id: int, payload: dict):
+    """Update a team"""
+    token = request.headers.get("Authorization")
+    if not token or not token.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    try:
+        token_payload = login_service.decode_token(token.split(" ")[1])
+        user_id = token_payload.get("user_id")
+        organization_id = token_payload.get("org_id")
+        team_name = payload.get("team_name")
+        user_description = payload.get("description")
+        role = user_service.user_role_check(user_id)
+        print(role)
+        if role.lower() not in {"admin", "editor"}:
+            raise HTTPException(status_code=403, detail="User is not allowed to update teams")
+        if not organization_id:
+            raise HTTPException(status_code=400, detail="Invalid token payload")
+        print(team_id,organization_id,team_name,user_description ,"passing argument")
+        result = team_service.update_team(team_id,organization_id,team_name,user_description)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message", "Failed to update team"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"update_team failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
@@ -188,22 +186,15 @@ async def get_teams_with_members_endpoint(request: Request):
     token = request.headers.get("Authorization")
     if not token or not token.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
-    
     try:
         token_payload = login_service.decode_token(token.split(" ")[1])
         organization_id = token_payload.get("org_id")
-        
         if not organization_id:
             raise HTTPException(status_code=400, detail="Invalid token payload")
-        
-        # Call the service function
         result = team_service.get_teams_with_member_counts(organization_id)
-        
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("message", "Failed to get teams with member counts"))
-        
         return result
-        
     except HTTPException:
         raise
     except Exception as e:
@@ -212,7 +203,27 @@ async def get_teams_with_members_endpoint(request: Request):
 
 
 
-
-
-
+@router.get("/team_members/{team_id}")
+async def get_team_members_endpoint(request: Request, team_id: int):
+    """Get all users assigned to a specific team"""
+    token = request.headers.get("Authorization")
+    if not token or not token.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    try:
+        token_payload = login_service.decode_token(token.split(" ")[1])
+        organization_id = token_payload.get("org_id")
+        if not organization_id:
+            raise HTTPException(status_code=400, detail="Invalid token payload")
+        valid_org = organization_service.get_check_organization(organization_id)
+        if not valid_org:
+            raise HTTPException(status_code=400, detail="Invalid organization id")
+        result = team_service.get_team_members(team_id, organization_id)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message", "Failed to get team members"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"get_team_members failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 

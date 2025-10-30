@@ -55,7 +55,7 @@ async def test_secure_tokens():
             # Show full user data (not in token)
             print("\n   👤 Full user data (stored on server, not in token):")
             user_data = login_result.get('user', {})
-            print(f"      - Name: {user_data.get('name')}")
+            print(f"      - Name: {user_data.get('name')}") 
             print(f"      - Email: {user_data.get('email')}")
             print(f"      - Role: {user_data.get('role')}")
             print(f"      - Department: {user_data.get('department')}")

@@ -259,3 +259,20 @@ def get_users_in_organization(org_id,role):
                     for user in users
                 ]
             }
+
+
+
+
+
+
+def user_role_check(user_id):
+    conn = get_connection()
+    if conn is None:
+        return {"success": False, "message": "Database connection failed"}
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT role FROM users WHERE id = %s", (user_id,))
+    role = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return role['role']
+    
