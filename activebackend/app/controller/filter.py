@@ -35,6 +35,7 @@ async def get_user(
         organization = await organization_service.get_organization_by_id(filters["organization_id"])
         if not organization:
             logging.error("Organization not found")
+            return "this organization is not found"
             raise HTTPException(status_code=404, detail="Organization not found")
 
     filters = {k: v for k, v in filters.items() if v is not None}

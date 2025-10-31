@@ -1,0 +1,16 @@
+first install and libraries using python command in terminal
+---> pip install -r requirements.txt
+than go inside app using below command
+--->cd app
+and run this command 
+---> uvicorn main:app --reload --port 9900
+
+
+
+
+############# database 
+to check database table structure used \d table name
+
+
+
+

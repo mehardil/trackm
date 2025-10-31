@@ -1,0 +1,19 @@
+
+--> in this we will update categories of website 
+
+categories option
+productive
+unproductive
+undefine
+
+API 1
+
+/categories/web_organization_list
+1- first we will get all distinct website for clickhoue activities table for this specific organization
+2- and we show all website in page and by default its categories is undefine
+
+
+API 2
+
+/categories/update_web_categories
+1-in this we will update undefine categories into  productive unproductive and un

@@ -2,6 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from controller import organization,team,login,user,filter,signup,access,agentdownload
+from controller import categories
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -18,8 +19,7 @@ app.include_router(filter.router, prefix="/filter", tags=["filter"])
 app.include_router(signup.router, prefix="/signup", tags=["signup"])
 app.include_router(access.router, prefix="/access", tags=["role-access"])
 app.include_router(agentdownload.router, prefix="/downloadagent", tags=["downloadagent"])
-
-
+app.include_router(categories.router, prefix="/categories", tags=["categories"])
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
