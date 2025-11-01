@@ -47,8 +47,14 @@ def asign_website_to_categories(website_url, categories, organization_id):
 
 
 
-def update_web_categories(website_url, categories, organization_id):
+def update_web_categories(website_url, categories, organization_id,category_id):
     """update categories of website and applicationn"""
+    category_id 
+    sql = f"""
+            SELECT id,type, pattern, category FROM app_website_rules
+            where organization_id = {organization_id} and category_id = {category_id}
+    """
+
     return {
             "success": True,
             "message": "Websites assigned to categories successfully"

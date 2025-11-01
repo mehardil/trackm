@@ -1,4 +1,4 @@
 basically must know there is some rule of clickhouse database 
 
 in which normally update command is not work for this we used other 
-technique for update we used new table create insert and swap table
+technique for update we used new table create insert and swap table()

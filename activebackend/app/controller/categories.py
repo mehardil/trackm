@@ -57,6 +57,7 @@ async def update_web_categories(request: Request, categories_data: dict):
             raise HTTPException(status_code=403, detail="User is not allowed to remove agent from teams")
         website_url = categories_data.get("website_url")
         categories = categories_data.get("categories")
+        
 
         if not website_url or not categories:
             raise HTTPException(status_code=400, detail="website_url and categories are required")
