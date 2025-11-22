@@ -14,8 +14,8 @@ def clickhouse_connection():
     try:
         host = os.getenv('CLICKHOUSE_HOST', '127.0.0.1')  # Force IPv4
         port = int(os.getenv('CLICKHOUSE_PORT', 9000))
-        user = os.getenv('CLICKHOUSE_USER', 'default')
-        password = os.getenv('CLICKHOUSE_PASSWORD', '')
+        user = os.getenv('CLICKHOUSE_USER', '')
+        password = os.getenv('CLICKHOUSE_PASSWORD', 'adm1n#Mobi')
         database = os.getenv('CLICKHOUSE_DB', 'trackm')
 
         logging.info(f"Connecting to ClickHouse at {host}:{port} (DB: {database})")

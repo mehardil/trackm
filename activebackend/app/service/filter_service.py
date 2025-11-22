@@ -1,6 +1,7 @@
 import logging
 from database_clickhouse import clickhouse_connection
 
+
 async def filter_activites_logs(filters):
     logging.info(f"Called filter_activites_logs with filters={filters}")
     client = clickhouse_connection()
